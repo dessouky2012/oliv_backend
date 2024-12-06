@@ -74,13 +74,16 @@ user_context = {
     "budget": None
 }
 
-def get_perplexity_commentary(location, property_type, bedrooms, budget):
-    """Fetch listings or commentary from Perplexity and format them warmly."""
+def get_perplexity_commentary(location, property_type, bedrooms, budget, exact_location=None):
+    """
+    Fetch listings or commentary from Perplexity. If `exact_location` is provided (e.g., a building name),
+    we request only listings that match that exact name.
+    """
     if location and property_type:
         max_price = int(budget) if isinstance(budget, (int, float)) else None
-        listings = find_listings(location, property_type, bedrooms, max_price)
+        listings = find_listings(location, property_type, bedrooms, max_price, exact_location=exact_location)
         if listings:
-            reply = "\n\nI’ve picked out a few options that might suit you:\n"
+            reply = "\n\nHere are some options that closely match your request:\n"
             for i, l in enumerate(listings, start=1):
                 name = l.get("name", "A lovely place")
                 link = l.get("link", "#")
@@ -89,10 +92,17 @@ def get_perplexity_commentary(location, property_type, bedrooms, budget):
                 reply += f"\nOption {i}:\nName: {name}\nPrice: {price}\nFeatures: {features}\nLink: {link}\n"
             return reply
         else:
-            # If no direct listings, general commentary
-            commentary = find_general_commentary(location, property_type, bedrooms, max_price)
-            if commentary.strip():
-                return "\n\n" + commentary
+            # If no direct listings found
+            if exact_location:
+                return (
+                    f"\n\nI couldn’t find any current listings explicitly in {exact_location}. "
+                    "Sometimes availability can be limited. Would you consider a nearby building or adjusting your criteria?"
+                )
+            else:
+                # No exact building, just general commentary
+                commentary = find_general_commentary(location, property_type, bedrooms, max_price)
+                if commentary.strip():
+                    return "\n\n" + commentary
     return ""
 
 def handle_user_query(user_input: str):
@@ -104,7 +114,6 @@ def handle_user_query(user_input: str):
     bedrooms = parsed.get("bedrooms", user_context["bedrooms"])
     budget = parsed.get("budget", user_context["budget"])
 
-    # Debug logging
     logger.info(f"User Input: {user_input}")
     logger.info(f"Extracted Intent: {intent}")
     logger.info(f"Location: {location}, Property Type: {property_type}, Bedrooms: {bedrooms}, Budget: {budget}")
@@ -119,10 +128,20 @@ def handle_user_query(user_input: str):
     if budget is not None:
         user_context["budget"] = budget
 
-    # If property type is missing but we have location and bedrooms, assume apartment
+    # If property type missing but we have location and bedrooms, assume apartment
     if user_context["property_type"] is None and user_context["location"] and user_context["bedrooms"] is not None:
         user_context["property_type"] = "apartment"
         property_type = "apartment"
+
+    # Determine if the user mentioned a specific building by checking location details
+    # For example, if user says "Marina View Tower" we treat that as exact_location
+    exact_location = None
+    # Simple heuristic: If user says something like "in Marina View Tower"
+    # You might refine your NLU or do a substring check
+    # For demonstration, let's assume that if the location string contains "Tower" or "Marina View Tower" specifically, 
+    # we treat it as exact_location.
+    if location and "tower" in location.lower():
+        exact_location = location
 
     intent = parsed.get("intent")
     location = user_context["location"]
@@ -130,19 +149,13 @@ def handle_user_query(user_input: str):
     bedrooms = user_context["bedrooms"]
     budget = user_context["budget"]
 
-    # Personality and approach:
-    # Oliv is a caring, knowledgeable British broker who tries to understand if user is investing, relocating, or settling with family.
-    # She tries to form a connection and tailor advice accordingly.
-
-    # If we have none of the details:
-    if not location and not property_type and not intent:
+    if not intent and not location and not property_type:
         return (
-            "Hello there, I’m Oliv. I’d love to help you with your property search in Dubai. "
-            "Are you looking for something to invest in, or perhaps a home for yourself or your family? "
-            "If you can share the area, property type, and what matters most to you, I can guide you better."
+            "Hello there, I’m Oliv. I’d love to help with your Dubai property search. "
+            "Are you looking for a home or an investment property? "
+            "Please share the area, property type, and your approximate budget, and I’ll do my best."
         )
 
-    # If intent recognized as price check
     if intent == "price_check" and location and property_type:
         predicted = predict_price({
             "AREA_EN": location,
@@ -156,137 +169,116 @@ def handle_user_query(user_input: str):
             if budget:
                 if budget > predicted:
                     reply = (
-                        f"Well, for a {bedrooms if bedrooms else 'studio'}-bed {property_type} in {location}, "
-                        f"the typical market average is around {int(predicted):,} AED. "
-                        f"Your budget of {int(budget):,} AED gives you some flexibility to pick something truly special."
+                        f"For a {bedrooms if bedrooms else 'studio'}-bed {property_type} in {location}, "
+                        f"the market average is around {int(predicted):,} AED. "
+                        f"Your budget of {int(budget):,} AED gives you nice flexibility."
                     )
                 else:
                     reply = (
-                        f"In {location}, a {bedrooms if bedrooms else 'studio'}-bed {property_type} usually hovers near {int(predicted):,} AED. "
-                        f"Your budget of {int(budget):,} AED fits right into the local range."
+                        f"A {bedrooms if bedrooms else 'studio'}-bed {property_type} in {location} averages about {int(predicted):,} AED, "
+                        f"and {int(budget):,} AED fits the local range."
                     )
             else:
                 reply = (
-                    f"Typically, a {bedrooms if bedrooms else 'studio'}-bed {property_type} in {location} is around {int(predicted):,} AED. "
-                    "May I ask if you’re exploring these prices for a personal home or an investment property?"
+                    f"A {bedrooms if bedrooms else 'studio'}-bed {property_type} in {location} "
+                    f"often costs around {int(predicted):,} AED."
                 )
 
             stats = get_price_range(location, property_type, bedrooms)
             if stats:
                 reply += (
-                    f" Historically, similar places sold from about {int(stats['min_price']):,} to {int(stats['max_price']):,} AED, "
-                    f"with a median near {int(stats['median_price']):,} AED."
+                    f" Historically, similar units ranged {int(stats['min_price']):,}-{int(stats['max_price']):,} AED "
+                    f"(median ~{int(stats['median_price']):,} AED)."
                 )
         else:
             reply = (
-                f"I’m sorry, I don’t have enough historical data to pinpoint the price range for a {property_type} in {location}. "
-                "Could you tell me what drew you to this area or what your plans are? Understanding your goals helps me help you."
+                f"Sorry, I don’t have exact historical data for a {property_type} in {location}. "
+                "Could you tell me more about your priorities (e.g., return on investment, family-friendly, etc.)? "
+                "This helps me guide you better."
             )
 
-        reply += get_perplexity_commentary(location, property_type, bedrooms, budget)
+        reply += get_perplexity_commentary(location, property_type, bedrooms, budget, exact_location=exact_location)
         return reply.strip()
 
-    # Searching for listings
     elif intent == "search_listings":
         if not location or not property_type:
             return (
-                "I’d love to help! Could you tell me a bit more about what type of property you’d like "
-                "and in which area of Dubai? Also, is this for your own residence, or an investment?"
+                "Could you share the area and type of property you’re interested in? "
+                "And is this for personal use or investment?"
             )
 
         if budget is None:
             return (
-                f"So we’re looking at a {bedrooms if bedrooms else 'studio'}-bed {property_type} in {location}, wonderful choice. "
-                "What sort of budget range are we considering here? And let me know, is this place for your family, "
-                "or more of a long-term investment?"
+                f"So, a {bedrooms if bedrooms else 'studio'}-bed {property_type} in {location}? "
+                "What’s your budget range, and is this more for family living or as an investment?"
             )
 
         intro_reply = (
             f"Let’s see what’s currently available for a {bedrooms if bedrooms else 'studio'}-bed {property_type} in {location} "
             f"around {int(budget):,} AED."
         )
-        commentary = get_perplexity_commentary(location, property_type, bedrooms, budget)
+        commentary = get_perplexity_commentary(location, property_type, bedrooms, budget, exact_location=exact_location)
         if commentary.strip() == "":
             stats = get_price_range(location, property_type, bedrooms)
             if stats:
                 price_hint = (
-                    f" Historically, similar units sold around {int(stats['min_price']):,}-{int(stats['max_price']):,} AED "
+                    f" Historically, similar units ranged {int(stats['min_price']):,}-{int(stats['max_price']):,} AED "
                     f"(median ~{int(stats['median_price']):,} AED)."
                 )
             else:
                 price_hint = ""
-
             reply = (
                 intro_reply + "\n\nI’m not seeing exact matches at the moment. "
-                "Would you consider adjusting your budget slightly or exploring a nearby neighborhood? "
-                f"{price_hint} Let me know a bit about your preferences—do you need extra space for a family, "
-                "or are you focusing on high rental yield for investment?"
+                "Would you consider tweaking your criteria or exploring a nearby building? "
+                f"{price_hint}"
             )
         else:
             reply = intro_reply + commentary
         return reply.strip()
 
-    # Market trend
     elif intent == "market_trend" and location:
         stats = get_price_range(location, property_type if property_type else "apartment", bedrooms)
         if stats:
             base_trend = (
-                f"In {location}, historically, properties ranged {int(stats['min_price']):,}-{int(stats['max_price']):,} AED, "
-                f"with a median near {int(stats['median_price']):,} AED. "
-                "The market often appeals to both families and investors looking for stable growth."
+                f"In {location}, prices historically ranged {int(stats['min_price']):,}-{int(stats['max_price']):,} AED, "
+                f"(median ~{int(stats['median_price']):,} AED). "
+                "Is your focus more on stable capital appreciation or rental yield?"
             )
         else:
             base_trend = (
-                f"In {location}, the market can vary widely. "
-                "Are you considering this area for long-term capital appreciation, or is it more about a home that fits your lifestyle?"
+                f"In {location}, trends vary. "
+                "Are you leaning towards a family-friendly community or a high-yield investment location?"
             )
 
-        commentary = get_perplexity_commentary(location, property_type if property_type else "apartment", bedrooms, None)
+        commentary = get_perplexity_commentary(location, property_type if property_type else "apartment", bedrooms, None, exact_location=exact_location)
         reply = base_trend + commentary
         return reply.strip()
 
-    # Scheduling a viewing
     elif intent == "schedule_viewing":
         return (
-            "Wonderful! Let’s sort out the viewing details. Could you share your preferred date, time, "
-            "and the best way to reach you? Also, is this for yourself or are you guiding someone else through the process?"
+            "Great! When would be a convenient time for you, and how shall I get in touch? "
+            "Also, are you viewing for yourself or on behalf of someone else?"
         )
 
-    # Default / Not enough info
     else:
-        # If we have partial details (e.g., location but no property_type)
-        if location and not property_type:
-            return (
-                f"I’m glad you mentioned {location}. Could you tell me what type of property you’re leaning towards there? "
-                "Also, is this a family home you’re after, or are you more interested in an investment opportunity?"
-            )
-
-        # If we have property_type but not location
-        if property_type and not location:
-            return (
-                f"So you’re interested in a {property_type}, lovely. Do you have a particular area of Dubai in mind? "
-                "And are we looking for a place to settle down, or to generate a rental income?"
-            )
-
-        # If some details are known but no intent matched
+        # If we have partial info but no clear intent, try to nudge the user
         if location and property_type:
-            commentary = get_perplexity_commentary(location, property_type, bedrooms, budget)
+            commentary = get_perplexity_commentary(location, property_type, bedrooms, budget, exact_location=exact_location)
             if commentary.strip():
                 return (
                     f"I see you’re interested in a {bedrooms if bedrooms else 'studio'}-bed {property_type} in {location}. "
-                    "Could you share whether this is for your family, or perhaps a good investment spot you have in mind?"
+                    "Could you tell me a bit more about your goals—family home or an investment?"
                     + commentary
                 )
             else:
                 return (
-                    f"Tell me more about what you’re looking for in {location}. "
-                    "Is this your first time investing in Dubai, or are you searching for a new home to accommodate your lifestyle?"
+                    f"Could you clarify what you’re aiming for in {location}? "
+                    "Is it a permanent home, a short-term residence, or purely an investment opportunity?"
                 )
 
-        # If very little info is known
         return (
-            "Hello! I’m Oliv. To assist you better, I’d love to know if you’re seeking a family home or an investment property, "
-            "and in which area you’re interested. Let’s start with that—where in Dubai catches your eye?"
+            "Hello! Could you share more details about what you’re looking for? "
+            "For example: 'I’d like a 2-bedroom apartment in Dubai Marina for investment under 2 million AED.'"
         )
 
 @app.get("/")
