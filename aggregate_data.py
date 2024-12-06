@@ -1,5 +1,8 @@
 import pandas as pd
 
+# Example script to create price_stats.csv from DLD data.
+# Run this once to produce the aggregated data.
+
 dld_data = pd.read_csv("dld_data.csv")
 
 price_stats = dld_data.groupby(["AREA_EN", "PROP_TYPE_EN", "ROOMS_EN"]).agg(
