@@ -6,76 +6,99 @@ import logging
 logger = logging.getLogger(__name__)
 
 PERPLEXITY_API_KEY = os.getenv("PERPLEXITY_API_KEY")
+API_URL = "https://api.perplexity.ai/chat/completions"
 
-# Choose a model known to work or widely supported. Adjust if Perplexity docs require a specific model.
+# If Perplexity has specific models, adjust accordingly
 MODEL_NAME = "llama-3.1-sonar-huge-128k-online"
 
-def find_listings(location: str, property_type: str, bedrooms: int, price_max: int):
-    """Call Perplexity API to find listings. Returns a list of JSON objects with name, link, price, features."""
+def call_perplexity(query: str) -> str:
+    """Call Perplexity API with given query and return raw response content."""
     if not PERPLEXITY_API_KEY:
-        logger.warning("PERPLEXITY_API_KEY not set. Returning empty listings.")
-        return []
+        logger.warning("PERPLEXITY_API_KEY not set. Returning empty response.")
+        return "[]"
 
-    url = "https://api.perplexity.ai/chat/completions"
     headers = {
         "Authorization": f"Bearer {PERPLEXITY_API_KEY}",
         "Content-Type": "application/json",
         "Accept": "application/json"
     }
 
-    bed_text = f"{bedrooms}-bedroom" if bedrooms else ""
-    budget_text = f"around {price_max} AED" if price_max else "a reasonable price range"
-
-    # Strict instructions to return ONLY JSON
-    user_prompt = (
-        f"Find a list of current property listings for a {bed_text} {property_type} in {location} {budget_text}. "
-        "Return ONLY valid JSON as a list of objects with keys: name, link, price, features. "
-        "No extra text. For example:\n\n"
-        '[{"name":"Luxury Apartment","link":"https://example.com","price":"1,500,000 AED","features":"3 beds, 2 baths"}]'
-    )
-
     payload = {
         "model": MODEL_NAME,
         "messages": [
-            {"role": "system", "content": "You are a helpful assistant. Return ONLY JSON."},
-            {"role": "user", "content": user_prompt}
+            {"role": "system", "content": "You are a helpful assistant. Return ONLY JSON. If no results, return []"},
+            {"role": "user", "content": query}
         ],
         "max_tokens": 700,
         "temperature": 0.0
     }
 
     try:
-        response = requests.post(url, headers=headers, json=payload, timeout=30)
+        response = requests.post(API_URL, headers=headers, json=payload, timeout=30)
+        logger.info(f"Perplexity API status: {response.status_code}")
+        logger.info("Perplexity raw response: " + response.text)
+
         if response.status_code == 200:
             data = response.json()
             content = data["choices"][0]["message"].get("content", "").strip()
-            # Try direct JSON parsing first
-            try:
-                listings = json.loads(content)
-                if isinstance(listings, list):
-                    return listings
-                else:
-                    logger.error("Perplexity response did not return a list.")
-                    return []
-            except json.JSONDecodeError:
-                # Attempt to extract JSON if there's extra formatting
-                logger.error("Failed to parse JSON directly. Attempting fallback parsing.")
-                # Fallback: try to locate JSON in content
-                start = content.find('[')
-                end = content.rfind(']')
-                if start != -1 and end != -1:
-                    maybe_json = content[start:end+1]
-                    try:
-                        listings = json.loads(maybe_json)
-                        if isinstance(listings, list):
-                            return listings
-                    except json.JSONDecodeError:
-                        pass
-                logger.error("Failed to parse listings JSON from Perplexity after fallback.")
-                return []
+            logger.info("Perplexity extracted content: " + content)
+            return content
         else:
             logger.error(f"Perplexity returned status {response.status_code}: {response.text}")
-            return []
+            return "[]"
     except Exception as e:
         logger.error(f"Exception calling Perplexity: {e}")
+        return "[]"
+
+def parse_listings(content: str):
+    """Parse JSON listings from content."""
+    try:
+        listings = json.loads(content)
+        if isinstance(listings, list):
+            return listings
+        else:
+            logger.error("Parsed JSON is not a list. Content was: " + content)
+            return []
+    except json.JSONDecodeError:
+        logger.error("Failed to parse JSON. Content: " + content)
         return []
+
+def find_listings(location: str, property_type: str, bedrooms: int, price_max: int):
+    bed_text = f"{bedrooms}-bedroom" if bedrooms else ""
+    budget_text = f"around {price_max} AED" if price_max else "within a reasonable price range"
+
+    user_prompt = (
+        f"Find available {bed_text} {property_type}(s) in {location} {budget_text}. "
+        "Return ONLY JSON as an array of objects, each with keys: name, link, price, features. "
+        "If no listings found, return []."
+    )
+    content = call_perplexity(user_prompt)
+    return parse_listings(content)
+
+def find_general_commentary(location: str, property_type: str, bedrooms: int, price_max: int):
+    bed_text = f"{bedrooms}-bedroom" if bedrooms else ""
+    budget_text = f"around {price_max} AED" if price_max else "a given price range"
+
+    user_prompt = (
+        f"Provide a JSON array with a few recommended {bed_text} {property_type}(s) in {location} {budget_text}, "
+        "or general commentary if listings are unavailable. Each element: {\"name\":\"...\",\"link\":\"...\",\"price\":\"...\",\"features\":\"...\"}. "
+        "If no specific listings found, return a single-element array with a short commentary in 'features'."
+    )
+    content = call_perplexity(user_prompt)
+    # Try parsing as listings; if empty or fail, return commentary as string
+    try:
+        results = json.loads(content)
+        if isinstance(results, list) and len(results) > 0:
+            # Format as a short commentary block
+            commentary = "\nFrom my online search:\n"
+            for i, r in enumerate(results, start=1):
+                name = r.get("name", "A property")
+                link = r.get("link", "#")
+                price = r.get("price", "N/A")
+                features = r.get("features", "")
+                commentary += f"\nOption {i}: {name}\nPrice: {price}\nFeatures: {features}\nLink: {link}\n"
+            return commentary
+        else:
+            return "\nI couldn’t find listings, but online sources suggest exploring different platforms for more options."
+    except json.JSONDecodeError:
+        return "\nI couldn’t find relevant listings online at the moment."
