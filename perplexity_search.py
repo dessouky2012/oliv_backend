@@ -4,9 +4,16 @@ import requests
 PERPLEXITY_API_KEY = os.getenv("PERPLEXITY_API_KEY")
 MODEL_NAME = "llama-3.1-sonar-large-128k-online"
 
-def ask_perplexity(query: str) -> dict:
+def find_listings(location: str, property_type: str, bedrooms: int, price_max: int):
+    """
+    Call Perplexity to find listings.
+    We instruct Perplexity to return JSON with a list of properties.
+    Each property: {"name": "...", "link": "...", "price": "...", "features": "..."}
+    If none found, return an empty list.
+    """
+
     if not PERPLEXITY_API_KEY:
-        return {"error": "Perplexity API key not set."}
+        return []
 
     url = "https://api.perplexity.ai/chat/completions"
     headers = {
@@ -15,17 +22,19 @@ def ask_perplexity(query: str) -> dict:
         "Accept": "application/json"
     }
 
-    system_prompt = (
-        "You are Oliv, a research assistant specializing in Dubai real estate. "
-        "User may ask for listings, pricing details, or market info. "
-        "If user requests listings, provide factual details and direct links if possible. "
-        "No human agents. Focus on Dubai properties. If no listings, give best possible related info."
+    # Prompt Perplexity for listings in JSON format
+    query = (
+        f"Find up to 3 actual listings for a {bedrooms if bedrooms else ''}-bedroom {property_type} "
+        f"in {location} around {price_max if price_max else 'a reasonable'} AED. "
+        "Return the response as a JSON array of objects like this: "
+        '[{"name":"Property Name","link":"URL","price":"XXX AED","features":"Short description"}]. '
+        "No extra text, only JSON."
     )
 
     payload = {
         "model": MODEL_NAME,
         "messages": [
-            {"role": "system", "content": system_prompt},
+            {"role": "system", "content": "You are a data retrieval assistant. Return only the requested JSON."},
             {"role": "user", "content": query}
         ],
         "max_tokens": 800,
@@ -36,12 +45,17 @@ def ask_perplexity(query: str) -> dict:
         response = requests.post(url, headers=headers, json=payload, timeout=30)
         if response.status_code == 200:
             data = response.json()
+            # Extract content
             if "choices" in data and data["choices"]:
-                content = data["choices"][0]["message"].get("content", "").strip()
-                if content:
-                    return {"answer": content}
-            return {"answer": "No usable answer returned by Perplexity."}
-        else:
-            return {"error": f"Non-200 status: {response.status_code}", "full_response": response.text}
-    except Exception as e:
-        return {"error": f"Exception: {str(e)}"}
+                content = data["choices"][0]["message"].get("content","").strip()
+                # Attempt to parse JSON
+                try:
+                    listings = json.loads(content)
+                    if isinstance(listings, list):
+                        return listings
+                except:
+                    # If parsing fails, return empty
+                    return []
+        return []
+    except:
+        return []
