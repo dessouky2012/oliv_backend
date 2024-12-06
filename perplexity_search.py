@@ -7,7 +7,7 @@ logger = logging.getLogger(__name__)
 
 PERPLEXITY_API_KEY = os.getenv("PERPLEXITY_API_KEY")
 API_URL = "https://api.perplexity.ai/chat/completions"
-MODEL_NAME = "llama-3.1-sonar-huge-128k-online"  # Verified working model from testing
+MODEL_NAME = "llama-3.1-sonar-small-128k-online"  # Verified working model from testing
 
 def call_perplexity(query: str) -> str:
     """Call the Perplexity API with the given query and return raw JSON content (possibly wrapped in code fences)."""

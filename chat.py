@@ -46,7 +46,7 @@ while True:
             assistant_reply = "I’m sorry, I don’t have enough data to estimate that price range."
     else:
         response = openai.ChatCompletion.create(
-            model="gpt-4",
+            model="gpt-4o",
             messages=messages,
             temperature=0.7,
             max_tokens=500
