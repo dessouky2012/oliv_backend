@@ -14,9 +14,7 @@ openai.api_key = os.getenv("OPENAI_API_KEY")
 
 app = FastAPI()
 
-# Add CORS Middleware so that the Netlify frontend can access the backend
-# You can replace the "*" with your Netlify domain for better security:
-# e.g. allow_origins=["https://your-netlify-domain.netlify.app"]
+# Allow CORS from everywhere for now. Ideally restrict this to your Netlify URL.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  
@@ -32,7 +30,7 @@ def read_root():
 class UserMessage(BaseModel):
     message: str
 
-# Load your aggregated price stats (make sure price_stats.csv is in the backend directory)
+# Load aggregated price stats
 price_stats = pd.read_csv("price_stats.csv")
 
 def get_price_range(area, prop_type, bedrooms):
@@ -85,6 +83,7 @@ def chat_with_oliv(user_msg: UserMessage):
     assistant_reply = ""
 
     if intent == "price_check" and location and property_type:
+        # Price Check:
         predicted = predict_price({
             "AREA_EN": location,
             "PROP_TYPE_EN": property_type,
@@ -120,21 +119,45 @@ def chat_with_oliv(user_msg: UserMessage):
                 f"with a median of about {int(stats['median_price']):,} AED."
             )
 
+        # Use Perplexity to get external commentary about pricing factors
         commentary_query = (
             f"Given a {bedrooms if bedrooms else 'Studio'}-bedroom {property_type} in {location}, "
-            "explain what factors influence pricing (location, amenities, new developments) without referring to human agents."
+            "explain what factors influence pricing (location, amenities, new developments) "
+            "without referring to human agents."
         )
         perplexity_result = ask_perplexity(commentary_query)
         if "answer" in perplexity_result:
             price_reply += " " + perplexity_result["answer"]
+        else:
+            price_reply += " I couldn't find more details at the moment from external sources."
 
         assistant_reply = price_reply
 
+    elif intent == "search_listings":
+        # Searching for listings. Use Perplexity to find actual examples if possible
+        query = (
+            f"Find up to 3 listings for a {bedrooms if bedrooms else ''}-bedroom {property_type if property_type else 'property'} "
+            f"in {location if location else 'Dubai'}"
+        )
+        if budget:
+            query += f" under {int(budget):,} AED"
+        query += (
+            ". Provide direct links if possible (e.g., Bayut/Propertyfinder), and do not mention human agents. "
+            "Keep it factual and concise."
+        )
+
+        perplexity_result = ask_perplexity(query)
+        if "answer" in perplexity_result:
+            assistant_reply = perplexity_result["answer"]
+        else:
+            assistant_reply = "I couldn't find specific listings at this time. Consider adjusting your criteria."
+
     elif intent == "market_trend" and location:
+        # Market Trend:
         trend_reply = f"Let’s consider the current market trends in {location}."
         commentary_query = (
-            f"Provide a brief commentary on recent real estate market trends in {location}, including demand shifts, "
-            "project launches, or pricing changes. No human agents."
+            f"Provide a brief commentary on recent real estate market trends in {location}, "
+            "including demand shifts, project launches, or pricing changes. No human agents."
         )
         perplexity_result = ask_perplexity(commentary_query)
         if "answer" in perplexity_result:
@@ -143,32 +166,15 @@ def chat_with_oliv(user_msg: UserMessage):
             trend_reply += " I'm unable to find additional commentary right now."
         assistant_reply = trend_reply
 
-    elif intent == "search_listings":
-        query = (
-            f"Find up to 3 listings for a {bedrooms if bedrooms else ''}-bedroom {property_type if property_type else 'property'} "
-            f"in {location if location else 'Dubai'}"
-        )
-        if budget:
-            query += f" under {int(budget):,} AED"
-        query += (
-            ". Provide direct links if possible (Bayut/Propertyfinder), and do not mention human agents. "
-            "Oliv will handle all user needs personally."
-        )
-
-        perplexity_result = ask_perplexity(query)
-        if "answer" in perplexity_result:
-            assistant_reply = perplexity_result["answer"]
-        else:
-            assistant_reply = "I couldn't find listings at this moment. Let's keep exploring other options."
-
     elif intent == "schedule_viewing":
+        # Scheduling a viewing:
         assistant_reply = (
             "I can schedule the viewing for you myself. Could you provide a preferred date, time, or contact details? "
             "I'll manage all arrangements directly."
         )
 
     else:
-        # Fallback: use GPT to respond
+        # Fallback: Use GPT directly if no specialized intent is found
         response = openai.ChatCompletion.create(
             model="gpt-4o",
             messages=conversation_history,

@@ -1,0 +1,102 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+  <meta http-equiv="Content-Style-Type" content="text/css">
+  <title></title>
+  <meta name="Generator" content="Cocoa HTML Writer">
+  <meta name="CocoaVersion" content="2575.2">
+  <style type="text/css">
+    p.p1 {margin: 0.0px 0.0px 0.0px 0.0px; font: 12.0px Helvetica}
+    p.p2 {margin: 0.0px 0.0px 0.0px 0.0px; font: 12.0px Helvetica; min-height: 14.0px}
+  </style>
+</head>
+<body>
+<p class="p1">&lt;!DOCTYPE html&gt;</p>
+<p class="p1">&lt;html lang="en"&gt;</p>
+<p class="p1">&lt;head&gt;</p>
+<p class="p1">&lt;meta charset="UTF-8" /&gt;</p>
+<p class="p1">&lt;meta name="viewport" content="width=device-width, initial-scale=1.0"/&gt;</p>
+<p class="p1">&lt;title&gt;Oliv - Dubai Real Estate Assistant&lt;/title&gt;</p>
+<p class="p1">&lt;style&gt;</p>
+<p class="p1"><span class="Apple-converted-space">  </span>body {</p>
+<p class="p1"><span class="Apple-converted-space">    </span>font-family: sans-serif;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>max-width: 600px;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>margin: 50px auto;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>line-height: 1.5;</p>
+<p class="p1"><span class="Apple-converted-space">  </span>}</p>
+<p class="p1"><span class="Apple-converted-space">  </span>h1 {</p>
+<p class="p1"><span class="Apple-converted-space">    </span>text-align: center;</p>
+<p class="p1"><span class="Apple-converted-space">  </span>}</p>
+<p class="p1"><span class="Apple-converted-space">  </span>.container {</p>
+<p class="p1"><span class="Apple-converted-space">    </span>display: flex;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>gap: 10px;</p>
+<p class="p1"><span class="Apple-converted-space">  </span>}</p>
+<p class="p1"><span class="Apple-converted-space">  </span>input[type="text"] {</p>
+<p class="p1"><span class="Apple-converted-space">    </span>flex: 1;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>padding: 10px;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>border: 1px solid #ccc;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>border-radius: 4px;</p>
+<p class="p1"><span class="Apple-converted-space">  </span>}</p>
+<p class="p1"><span class="Apple-converted-space">  </span>button {</p>
+<p class="p1"><span class="Apple-converted-space">    </span>padding: 11px 20px;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>background: #0077FF;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>color: #fff;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>border: none;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>border-radius: 4px;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>cursor: pointer;</p>
+<p class="p1"><span class="Apple-converted-space">  </span>}</p>
+<p class="p1"><span class="Apple-converted-space">  </span>#response {</p>
+<p class="p1"><span class="Apple-converted-space">    </span>margin-top: 20px;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>white-space: pre-wrap;</p>
+<p class="p1"><span class="Apple-converted-space">  </span>}</p>
+<p class="p1">&lt;/style&gt;</p>
+<p class="p1">&lt;/head&gt;</p>
+<p class="p1">&lt;body&gt;</p>
+<p class="p1">&lt;h1&gt;Oliv: Dubai Real Estate Assistant&lt;/h1&gt;</p>
+<p class="p1">&lt;div class="container"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">  </span>&lt;input type="text" id="messageInput" placeholder="Ask Oliv about Dubai properties..." /&gt;</p>
+<p class="p1"><span class="Apple-converted-space">  </span>&lt;button id="sendBtn"&gt;Send&lt;/button&gt;</p>
+<p class="p1">&lt;/div&gt;</p>
+<p class="p1">&lt;div id="response"&gt;&lt;/div&gt;</p>
+<p class="p1">&lt;script&gt;</p>
+<p class="p1"><span class="Apple-converted-space">  </span>document.getElementById('sendBtn').addEventListener('click', async () =&gt; {</p>
+<p class="p1"><span class="Apple-converted-space">    </span>const message = document.getElementById('messageInput').value.trim();</p>
+<p class="p1"><span class="Apple-converted-space">    </span>if (!message) {</p>
+<p class="p1"><span class="Apple-converted-space">      </span>alert('Please enter a question before sending.');</p>
+<p class="p1"><span class="Apple-converted-space">      </span>return;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>}</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">    </span>const responseElem = document.getElementById('response');</p>
+<p class="p1"><span class="Apple-converted-space">    </span>responseElem.textContent = 'Thinking...';</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">    </span>try {</p>
+<p class="p1"><span class="Apple-converted-space">      </span>// Replace this URL with the URL of your deployed backend if different:</p>
+<p class="p1"><span class="Apple-converted-space">      </span>const res = await fetch('https://olivbackend-production.up.railway.app/chat', {</p>
+<p class="p1"><span class="Apple-converted-space">        </span>method: 'POST',</p>
+<p class="p1"><span class="Apple-converted-space">        </span>headers: {</p>
+<p class="p1"><span class="Apple-converted-space">          </span>'Content-Type': 'application/json'</p>
+<p class="p1"><span class="Apple-converted-space">        </span>},</p>
+<p class="p1"><span class="Apple-converted-space">        </span>body: JSON.stringify({ message })</p>
+<p class="p1"><span class="Apple-converted-space">      </span>});</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">      </span>if (!res.ok) {</p>
+<p class="p1"><span class="Apple-converted-space">        </span>responseElem.textContent = 'Error: ' + res.statusText;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>return;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>}</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">      </span>const data = await res.json();</p>
+<p class="p1"><span class="Apple-converted-space">      </span>if (data.reply) {</p>
+<p class="p1"><span class="Apple-converted-space">        </span>responseElem.textContent = data.reply;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>} else {</p>
+<p class="p1"><span class="Apple-converted-space">        </span>responseElem.textContent = 'No reply received.';</p>
+<p class="p1"><span class="Apple-converted-space">      </span>}</p>
+<p class="p1"><span class="Apple-converted-space">    </span>} catch (err) {</p>
+<p class="p1"><span class="Apple-converted-space">      </span>responseElem.textContent = 'An error occurred: ' + err.message;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>}</p>
+<p class="p1"><span class="Apple-converted-space">  </span>});</p>
+<p class="p1">&lt;/script&gt;</p>
+<p class="p1">&lt;/body&gt;</p>
+<p class="p1">&lt;/html&gt;</p>
+</body>
+</html>
