@@ -1,18 +1,29 @@
-# main.py
 import os
 import openai
-from fastapi import FastAPI
-from pydantic import BaseModel
 import pandas as pd
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 
 from nlu_integration import interpret_user_query
 from predict import predict_price
 from perplexity_search import ask_perplexity
 
-# Instead of hardcoding, read the API key from an environment variable.
+# Read your OpenAI API key from environment variable
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
 app = FastAPI()
+
+# Add CORS Middleware so that the Netlify frontend can access the backend
+# You can replace the "*" with your Netlify domain for better security:
+# e.g. allow_origins=["https://your-netlify-domain.netlify.app"]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.get("/")
 def read_root():
@@ -21,11 +32,10 @@ def read_root():
 class UserMessage(BaseModel):
     message: str
 
-# Load aggregated price stats created by aggregate_data.py
+# Load your aggregated price stats (make sure price_stats.csv is in the backend directory)
 price_stats = pd.read_csv("price_stats.csv")
 
 def get_price_range(area, prop_type, bedrooms):
-    # Format bedrooms for lookup
     if bedrooms is None:
         bedrooms_label = "Studio"
     else:
@@ -64,8 +74,6 @@ conversation_history = [system_message]
 @app.post("/chat")
 def chat_with_oliv(user_msg: UserMessage):
     user_input = user_msg.message.strip()
-
-    # Interpret user query
     user_data = interpret_user_query(user_input)
     intent = user_data.get("intent")
     location = user_data.get("location")
@@ -74,11 +82,9 @@ def chat_with_oliv(user_msg: UserMessage):
     budget = user_data.get("budget")
 
     conversation_history.append({"role": "user", "content": user_input})
-
     assistant_reply = ""
 
     if intent == "price_check" and location and property_type:
-        # Price Check
         predicted = predict_price({
             "AREA_EN": location,
             "PROP_TYPE_EN": property_type,
@@ -89,19 +95,18 @@ def chat_with_oliv(user_msg: UserMessage):
 
         stats = get_price_range(location, property_type, bedrooms)
         
-        # Construct a local data-driven initial reply
         if budget and isinstance(budget, (int, float)):
             if budget > predicted:
                 price_reply = (
                     f"The estimated price for a {bedrooms if bedrooms else 'Studio'}-bedroom {property_type} "
-                    f"in {location} is around {int(predicted):,} AED. "
-                    f"Your mentioned price of {int(budget):,} AED seems higher than the average."
+                    f"in {location} is around {int(predicted):,} AED. Your mentioned price of {int(budget):,} AED "
+                    "seems higher than the average."
                 )
             else:
                 price_reply = (
                     f"The estimated price for a {bedrooms if bedrooms else 'Studio'}-bedroom {property_type} "
-                    f"in {location} is around {int(predicted):,} AED. "
-                    f"Your mentioned price of {int(budget):,} AED is fair or below the average."
+                    f"in {location} is around {int(predicted):,} AED. Your mentioned price of {int(budget):,} AED "
+                    "is fair or below the average."
                 )
         else:
             price_reply = (
@@ -115,11 +120,9 @@ def chat_with_oliv(user_msg: UserMessage):
                 f"with a median of about {int(stats['median_price']):,} AED."
             )
 
-        # Perplexity commentary
         commentary_query = (
             f"Given a {bedrooms if bedrooms else 'Studio'}-bedroom {property_type} in {location}, "
-            "explain what factors influence pricing (location, amenities, new developments) "
-            "without referring to human agents."
+            "explain what factors influence pricing (location, amenities, new developments) without referring to human agents."
         )
         perplexity_result = ask_perplexity(commentary_query)
         if "answer" in perplexity_result:
@@ -128,11 +131,10 @@ def chat_with_oliv(user_msg: UserMessage):
         assistant_reply = price_reply
 
     elif intent == "market_trend" and location:
-        # Market Trend
         trend_reply = f"Let’s consider the current market trends in {location}."
         commentary_query = (
-            f"Provide a brief commentary on recent real estate market trends in {location}, "
-            "including demand shifts, project launches, or pricing changes. No human agents."
+            f"Provide a brief commentary on recent real estate market trends in {location}, including demand shifts, "
+            "project launches, or pricing changes. No human agents."
         )
         perplexity_result = ask_perplexity(commentary_query)
         if "answer" in perplexity_result:
@@ -142,7 +144,6 @@ def chat_with_oliv(user_msg: UserMessage):
         assistant_reply = trend_reply
 
     elif intent == "search_listings":
-        # Search Listings
         query = (
             f"Find up to 3 listings for a {bedrooms if bedrooms else ''}-bedroom {property_type if property_type else 'property'} "
             f"in {location if location else 'Dubai'}"
@@ -150,7 +151,7 @@ def chat_with_oliv(user_msg: UserMessage):
         if budget:
             query += f" under {int(budget):,} AED"
         query += (
-            ". Provide direct links if possible (Bayut/Propertyfinder) and do not mention human agents. "
+            ". Provide direct links if possible (Bayut/Propertyfinder), and do not mention human agents. "
             "Oliv will handle all user needs personally."
         )
 
@@ -158,19 +159,18 @@ def chat_with_oliv(user_msg: UserMessage):
         if "answer" in perplexity_result:
             assistant_reply = perplexity_result["answer"]
         else:
-            assistant_reply = "I couldn't find listings at the moment. Let's keep exploring other options."
+            assistant_reply = "I couldn't find listings at this moment. Let's keep exploring other options."
 
     elif intent == "schedule_viewing":
-        # Schedule Viewing
         assistant_reply = (
             "I can schedule the viewing for you myself. Could you provide a preferred date, time, or contact details? "
             "I'll manage all arrangements directly."
         )
 
     else:
-        # Fallback
+        # Fallback: use GPT to respond
         response = openai.ChatCompletion.create(
-            model="gpt-4o",  # Keep gpt-4o as requested
+            model="gpt-4o",
             messages=conversation_history,
             temperature=0.7,
             max_tokens=700
