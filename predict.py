@@ -1,13 +1,26 @@
 import pickle
 import pandas as pd
+import logging
 
-with open("pricing_model.pkl", "rb") as f:
-    model = pickle.load(f)
+logger = logging.getLogger(__name__)
 
-with open("training_columns.pkl", "rb") as f:
-    training_columns = pickle.load(f)
+try:
+    with open("pricing_model.pkl", "rb") as f:
+        model = pickle.load(f)
+except FileNotFoundError:
+    logger.error("pricing_model.pkl not found. Price prediction won't work.")
+    model = None
+
+try:
+    with open("training_columns.pkl", "rb") as f:
+        training_columns = pickle.load(f)
+except FileNotFoundError:
+    logger.error("training_columns.pkl not found. Price prediction won't work.")
+    training_columns = []
 
 def predict_price(new_data: dict):
+    if model is None or not training_columns:
+        return None
     new_data['AREA_EN'] = new_data.get('AREA_EN', 'UNKNOWN_AREA')
     new_data['PROP_TYPE_EN'] = new_data.get('PROP_TYPE_EN', 'UNKNOWN_TYPE')
     new_data['ACTUAL_AREA'] = new_data.get('ACTUAL_AREA', 80)
@@ -21,5 +34,9 @@ def predict_price(new_data: dict):
         input_df[col] = 0
 
     input_df = input_df[training_columns]
-    predicted_price = model.predict(input_df)[0]
-    return predicted_price
+    try:
+        predicted_price = model.predict(input_df)[0]
+        return predicted_price
+    except Exception as e:
+        logger.error(f"Prediction failed: {e}")
+        return None
