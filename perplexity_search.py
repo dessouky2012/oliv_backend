@@ -2,8 +2,8 @@
 import os
 import requests
 
-# Load your Perplexity API key
-PERPLEXITY_API_KEY = os.getenv("PERPLEXITY_API_KEY", "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")
+# Load your Perplexity API key from environment variables
+PERPLEXITY_API_KEY = os.getenv("PERPLEXITY_API_KEY")
 
 # Define the Perplexity model you want to use (check Perplexity’s docs for available models)
 MODEL_NAME = "llama-3.1-sonar-large-128k-online"
@@ -11,23 +11,35 @@ MODEL_NAME = "llama-3.1-sonar-large-128k-online"
 def ask_perplexity(query: str) -> dict:
     """
     Sends the user's query to Perplexity's Chat Completions endpoint and returns the assistant's reply.
-    We have improved the system prompt to encourage structured, actionable responses (e.g., listings),
-    and to not direct the user to other human agents. We ask for helpful, link-rich output if possible.
+    
+    Requirements:
+    - Provide structured details if listings are requested.
+    - Provide links if possible.
+    - Avoid directing to human agents. Oliv handles leads herself.
+    - If no listings or data found, return a helpful fallback message.
+    
+    Returns a dict:
+    - On success: {"answer": "..."} containing Perplexity's answer.
+    - On error: {"error": "..."} containing error details.
     """
+
+    if not PERPLEXITY_API_KEY:
+        return {"error": "Perplexity API key not set. Please set PERPLEXITY_API_KEY in environment variables."}
+
     url = "https://api.perplexity.ai/chat/completions"
     headers = {
         "Authorization": f"Bearer {PERPLEXITY_API_KEY}",
         "Content-Type": "application/json",
         "Accept": "application/json"
     }
-    
+
     system_prompt = (
-        "You are Oliv's research assistant, specializing in Dubai real estate. "
-        "You help find listings, market data, and property information. "
-        "If the user requests listings, provide structured details (e.g., bullet points) and direct links "
-        "to listings on Bayut or Propertyfinder if found. If no exact links are found, "
-        "give the closest available helpful data. The user should not be directed to human agents—Oliv wants "
-        "to handle leads herself. You can mention other online platforms, but not hand the user off to a human."
+        "You are Oliv, a research assistant, specializing in Dubai real estate. "
+        "The user may ask for listings, pricing details, or market info. "
+        "If the user requests listings, provide factual details and direct Bayut or Propertyfinder links if found. "
+        "Never direct the user to human agents, Oliv handles leads herself. "
+        "Focus on Dubai properties, return relevant listings or data. "
+        "If no exact listings found, provide best possible related info."
     )
 
     payload = {
@@ -39,18 +51,21 @@ def ask_perplexity(query: str) -> dict:
         "max_tokens": 800,
         "temperature": 0.7
     }
-    
+
     try:
         response = requests.post(url, headers=headers, json=payload, timeout=30)
         if response.status_code == 200:
             data = response.json()
-            # Assuming at least one choice is returned
-            answer = data["choices"][0]["message"]["content"]
-            return {"answer": answer}
+            # Check if 'choices' and 'message' and 'content' are present
+            if "choices" in data and len(data["choices"]) > 0 and "message" in data["choices"][0] and "content" in data["choices"][0]["message"]:
+                answer = data["choices"][0]["message"]["content"].strip()
+                if answer:
+                    return {"answer": answer}
+                else:
+                    return {"answer": "I couldn't find specific details at this moment."}
+            else:
+                return {"answer": "No usable answer returned by Perplexity."}
         else:
-            # If not 200, return error info
-            return {"error": f"Non-200 status code: {response.status_code}", "full_response": response.text}
+            return {"error": f"Non-200 status code from Perplexity: {response.status_code}", "full_response": response.text}
     except Exception as e:
-        return {"error": str(e)}
-
-# Remove the example usage block in production
+        return {"error": f"Exception occurred: {str(e)}"}
