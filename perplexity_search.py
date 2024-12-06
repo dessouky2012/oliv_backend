@@ -25,7 +25,7 @@ def find_listings(location: str, property_type: str, bedrooms: int, price_max: i
     budget_text = f"around {price_max} AED" if price_max else "a reasonable price range"
 
     query = (
-        f"Find listings published within the last 2 months for a {bed_text} {property_type} in {location} {budget_text}. "
+        f"Find listings for a {bed_text} {property_type} in {location} {budget_text}. "
         "Return ONLY JSON as a list of objects: "
         '[{"name":"Property Name","link":"URL","price":"XXX AED","features":"Short description"}].'
     )
@@ -33,7 +33,7 @@ def find_listings(location: str, property_type: str, bedrooms: int, price_max: i
     payload = {
         "model": MODEL_NAME,
         "messages": [
-            {"role": "system", "content": "You are a data retrieval assistant. Return ONLY JSON."},
+            {"role": "system", "content": "You are a real estate assistant. Return ONLY JSON."},
             {"role": "user", "content": query}
         ],
         "max_tokens": 800,
