@@ -40,7 +40,10 @@ while True:
             "PARKING": 1
         })
 
-        assistant_reply = f"The estimated price for a {bedrooms if bedrooms else 'Studio'} {property_type} in {location} is about {int(predicted):,} AED."
+        if predicted:
+            assistant_reply = f"The estimated price for a {bedrooms if bedrooms else 'studio'} {property_type} in {location} is about {int(predicted):,} AED."
+        else:
+            assistant_reply = "I’m sorry, I don’t have enough data to estimate that price range."
     else:
         response = openai.ChatCompletion.create(
             model="gpt-4",

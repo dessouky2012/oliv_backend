@@ -222,16 +222,34 @@ def handle_user_query(user_input: str):
             listing_results = []
 
         if not listing_results:
+            # Suggest adjusting budget or exploring areas, mention DLD data if available
+            stats = get_price_range(location, property_type, bedrooms)
+            if stats:
+                price_hint = (
+                    f" Historically, similar units ranged between {int(stats['min_price']):,} and {int(stats['max_price']):,} AED "
+                    f"(median ~{int(stats['median_price']):,} AED)."
+                )
+            else:
+                price_hint = ""
             assistant_reply = (
                 intro_reply + "\n\n"
                 "I’m not finding exact matches at the moment. You might consider adjusting your budget "
-                "or exploring nearby neighborhoods. Would you like to see areas similar to this location?"
+                f"or exploring nearby neighborhoods.{price_hint} Would you like to see areas similar to {location}?"
             )
             conversation_history.append({"role": "assistant", "content": assistant_reply})
             return assistant_reply
 
-        # Format listings
-        assistant_reply = intro_reply + "\n\nHere are a few options I found:\n"
+        # Format listings and include DLD stats mention
+        stats = get_price_range(location, property_type, bedrooms)
+        if stats:
+            intro_reply += (
+                f" Historically, similar units in {location} ranged from about {int(stats['min_price']):,} to {int(stats['max_price']):,} AED "
+                f"with a median of around {int(stats['median_price']):,} AED. Here are a few current options:\n"
+            )
+        else:
+            intro_reply += "\n\nHere are a few options I found:\n"
+
+        assistant_reply = intro_reply
         for i, listing in enumerate(listing_results, start=1):
             name = listing.get("name", "A lovely property")
             link = listing.get("link", "No link provided")

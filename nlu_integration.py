@@ -5,15 +5,11 @@ import logging
 
 logger = logging.getLogger(__name__)
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+
 openai.api_key = OPENAI_API_KEY
 
 def interpret_user_query(user_query: str) -> dict:
-    """Use OpenAI to interpret user query into structured data:
-    intent: "search_listings", "price_check", "market_trend", "schedule_viewing", or None
-    location, property_type, bedrooms, budget, timeframe
-    """
     if not OPENAI_API_KEY:
-        logger.warning("OPENAI_API_KEY not set. Returning empty interpretation.")
         return {
             "intent": None,
             "location": None,
@@ -27,17 +23,17 @@ def interpret_user_query(user_query: str) -> dict:
     Extract structured data in JSON from this user query about Dubai real estate:
     - intent: "search_listings", "price_check", "market_trend", "schedule_viewing", or None
     - location: str or None
-    - property_type: str or None (e.g., 'apartment', 'villa')
+    - property_type: str or None
     - bedrooms: int or None
     - budget: float or None
-    - timeframe: str or None (e.g., 'next month', 'immediately')
+    - timeframe: str or None
 
     User query: "{user_query}"
     """
 
     try:
         response = openai.ChatCompletion.create(
-            model="gpt-4",
+            model="gpt-3.5-turbo",
             messages=[
                 {"role": "system", "content": "Return only JSON."},
                 {"role": "user", "content": prompt}
