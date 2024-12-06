@@ -36,11 +36,13 @@ def get_price_range(area: str, prop_type: str, bedrooms: Optional[int]):
         bedrooms_label = "Studio"
     else:
         bedrooms_label = f"{bedrooms} B/R" if bedrooms != 0 else "Studio"
+
     subset = price_stats[
         (price_stats["AREA_EN"] == area) &
         (price_stats["PROP_TYPE_EN"] == prop_type) &
         (price_stats["ROOMS_EN"] == bedrooms_label)
     ]
+
     if not subset.empty:
         row = subset.iloc[0]
         return {
@@ -128,13 +130,13 @@ def fallback_response():
 def get_perplexity_commentary(location, property_type, bedrooms, budget):
     """
     Always try to fetch listings or commentary from Perplexity.
-    If we have a budget, try finding listings directly.
-    Otherwise, get some general commentary or indicative listings.
+    If we have a budget, we attempt to find listings directly.
+    If no direct listings are found or no budget is given, we retrieve general commentary.
     """
     if location and property_type:
         max_price = int(budget) if isinstance(budget, (int, float)) else None
         listings = find_listings(location, property_type, bedrooms, max_price)
-        if listings:
+        if listings and len(listings) > 0:
             # Format listings into a short commentary
             listing_str = "\nHere are some properties I found online:\n"
             for i, l in enumerate(listings, start=1):
@@ -177,7 +179,7 @@ def handle_user_query(user_input: str):
     bedrooms = user_context["bedrooms"]
     budget = user_context["budget"]
 
-    # Handle price check intent
+    # PRICE CHECK INTENT
     if intent == "price_check" and location and property_type:
         predicted = predict_price({
             "AREA_EN": location,
@@ -187,6 +189,7 @@ def handle_user_query(user_input: str):
             "PARKING": 1
         })
         if isinstance(predicted, (int, float)):
+            # Construct the base reply with price info
             if budget:
                 if budget > predicted:
                     assistant_reply = (
@@ -205,6 +208,7 @@ def handle_user_query(user_input: str):
                     f"typically goes for around {int(predicted):,} AED."
                 )
 
+            # Add historical data
             stats = get_price_range(location, property_type, bedrooms)
             if stats:
                 assistant_reply += (
@@ -214,14 +218,13 @@ def handle_user_query(user_input: str):
         else:
             assistant_reply = "I’m sorry, I don’t have enough data to estimate that price range right now."
 
-        # Always call Perplexity for additional commentary
+        # Add Perplexity commentary
         perplexity_info = get_perplexity_commentary(location, property_type, bedrooms, budget)
         assistant_reply += perplexity_info
-
         conversation_history.append({"role": "assistant", "content": assistant_reply})
         return assistant_reply
 
-    # Handle listing search intent
+    # SEARCH LISTINGS INTENT
     elif intent == "search_listings":
         if not location or not property_type:
             assistant_reply = (
@@ -243,10 +246,9 @@ def handle_user_query(user_input: str):
             f"Let me check a few options... Looking for a {bedrooms if bedrooms else ''}-bedroom {property_type} in {location} "
             f"around {int(budget):,} AED."
         )
-        # Directly call perplexity to get listings
         listing_str = get_perplexity_commentary(location, property_type, bedrooms, budget)
         if listing_str.strip() == "":
-            # No listings or commentary from perplexity
+            # No listings or commentary from Perplexity
             stats = get_price_range(location, property_type, bedrooms)
             if stats:
                 price_hint = (
@@ -261,32 +263,30 @@ def handle_user_query(user_input: str):
                 f"or exploring nearby neighborhoods.{price_hint} Would you like to see areas similar to {location}?"
             )
         else:
-            # We got some listings or commentary
             assistant_reply = intro_reply + listing_str
 
         conversation_history.append({"role": "assistant", "content": assistant_reply})
         return assistant_reply
 
-    # Handle market trend intent
+    # MARKET TREND INTENT
     elif intent == "market_trend" and location:
-        # Ask OpenAI about market trends first
         ai_messages = conversation_history[:]
         ai_messages.append({
             "role": "user",
             "content": f"Please tell me about the current real estate market trends in {location}."
         })
+
         assistant_reply = call_openai_api(ai_messages)
         if not assistant_reply or assistant_reply.strip() == "":
             assistant_reply = fallback_response()
 
-        # Add perplexity commentary as well
+        # Add perplexity commentary
         perplexity_info = get_perplexity_commentary(location, property_type, bedrooms, budget)
         assistant_reply += perplexity_info
-
         conversation_history.append({"role": "assistant", "content": assistant_reply})
         return assistant_reply
 
-    # Handle scheduling viewing intent
+    # SCHEDULE VIEWING INTENT
     elif intent == "schedule_viewing":
         assistant_reply = (
             "Certainly! Could you share your preferred date and time for the viewing, "
@@ -295,9 +295,8 @@ def handle_user_query(user_input: str):
         conversation_history.append({"role": "assistant", "content": assistant_reply})
         return assistant_reply
 
-    # Default case:
+    # DEFAULT/FALLBACK
     else:
-        # Even if no recognized intent, try to enrich with perplexity if we have location & property_type
         assistant_reply = call_openai_api(conversation_history)
         if not assistant_reply or assistant_reply.strip() == "":
             assistant_reply = fallback_response()
