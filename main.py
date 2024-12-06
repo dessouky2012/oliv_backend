@@ -9,15 +9,15 @@ from nlu_integration import interpret_user_query
 from predict import predict_price
 from perplexity_search import ask_perplexity
 
-# Read your OpenAI API key from environment variable
+# Load environment variables
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
 app = FastAPI()
 
-# Allow CORS from everywhere for now. Ideally restrict this to your Netlify URL.
+# Allow CORS from anywhere (adjust to your Netlify domain for production)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -30,7 +30,7 @@ def read_root():
 class UserMessage(BaseModel):
     message: str
 
-# Load aggregated price stats
+# Load aggregated price stats from DLD data
 price_stats = pd.read_csv("price_stats.csv")
 
 def get_price_range(area, prop_type, bedrooms):
@@ -54,7 +54,6 @@ def get_price_range(area, prop_type, bedrooms):
         }
     return None
 
-# Oliv's Personality and Instructions
 system_message = {
     "role": "system",
     "content": (
@@ -67,11 +66,15 @@ system_message = {
     )
 }
 
+# Keep track of conversation history for OpenAI reference (in-memory for now)
 conversation_history = [system_message]
 
-@app.post("/chat")
-def chat_with_oliv(user_msg: UserMessage):
-    user_input = user_msg.message.strip()
+def handle_user_query(user_input: str) -> str:
+    """
+    This function decides how to respond based on user input.
+    It uses the NLU module to extract intent and details, calls perplexity or predict_price as needed,
+    and falls back to OpenAI for general questions.
+    """
     user_data = interpret_user_query(user_input)
     intent = user_data.get("intent")
     location = user_data.get("location")
@@ -79,11 +82,11 @@ def chat_with_oliv(user_msg: UserMessage):
     bedrooms = user_data.get("bedrooms")
     budget = user_data.get("budget")
 
+    # Append user message to history
     conversation_history.append({"role": "user", "content": user_input})
-    assistant_reply = ""
 
+    # Decision logic based on intent
     if intent == "price_check" and location and property_type:
-        # Price Check:
         predicted = predict_price({
             "AREA_EN": location,
             "PROP_TYPE_EN": property_type,
@@ -93,19 +96,19 @@ def chat_with_oliv(user_msg: UserMessage):
         })
 
         stats = get_price_range(location, property_type, bedrooms)
-        
+
         if budget and isinstance(budget, (int, float)):
             if budget > predicted:
                 price_reply = (
-                    f"The estimated price for a {bedrooms if bedrooms else 'Studio'}-bedroom {property_type} "
-                    f"in {location} is around {int(predicted):,} AED. Your mentioned price of {int(budget):,} AED "
-                    "seems higher than the average."
+                    f"For a {bedrooms if bedrooms else 'Studio'}-bedroom {property_type} in {location}, "
+                    f"the estimated price is around {int(predicted):,} AED. "
+                    f"Your target of {int(budget):,} AED seems higher than the market average."
                 )
             else:
                 price_reply = (
-                    f"The estimated price for a {bedrooms if bedrooms else 'Studio'}-bedroom {property_type} "
-                    f"in {location} is around {int(predicted):,} AED. Your mentioned price of {int(budget):,} AED "
-                    "is fair or below the average."
+                    f"For a {bedrooms if bedrooms else 'Studio'}-bedroom {property_type} in {location}, "
+                    f"the estimated price is around {int(predicted):,} AED. "
+                    f"Your target of {int(budget):,} AED is fair or even below the average."
                 )
         else:
             price_reply = (
@@ -115,73 +118,73 @@ def chat_with_oliv(user_msg: UserMessage):
 
         if stats:
             price_reply += (
-                f" Historically, similar units have sold between {int(stats['min_price']):,} and {int(stats['max_price']):,} AED, "
-                f"with a median of about {int(stats['median_price']):,} AED."
+                f" Historically, similar units sold between {int(stats['min_price']):,} and {int(stats['max_price']):,} AED, "
+                f"with a median near {int(stats['median_price']):,} AED."
             )
 
-        # Use Perplexity to get external commentary about pricing factors
+        # Ask Perplexity for additional pricing factors commentary
         commentary_query = (
-            f"Given a {bedrooms if bedrooms else 'Studio'}-bedroom {property_type} in {location}, "
-            "explain what factors influence pricing (location, amenities, new developments) "
-            "without referring to human agents."
+            f"Explain what factors influence pricing for a {bedrooms if bedrooms else 'Studio'}-bedroom {property_type} in {location}, "
+            "considering location, amenities, and developments. No human agents."
         )
-        perplexity_result = ask_perplexity(commentary_query)
-        if "answer" in perplexity_result:
-            price_reply += " " + perplexity_result["answer"]
+        p_result = ask_perplexity(commentary_query)
+        if "answer" in p_result:
+            price_reply += " " + p_result["answer"]
         else:
-            price_reply += " I couldn't find more details at the moment from external sources."
+            price_reply += " I'm unable to retrieve additional external commentary right now."
 
         assistant_reply = price_reply
 
     elif intent == "search_listings":
-        # Searching for listings. Use Perplexity to find actual examples if possible
-        query = (
-            f"Find up to 3 listings for a {bedrooms if bedrooms else ''}-bedroom {property_type if property_type else 'property'} "
-            f"in {location if location else 'Dubai'}"
-        )
+        # Use Perplexity to find listings
+        query = f"Find up to 3 listings for a {bedrooms if bedrooms else ''}-bedroom {property_type if property_type else 'property'} in {location if location else 'Dubai'}"
         if budget:
             query += f" under {int(budget):,} AED"
-        query += (
-            ". Provide direct links if possible (e.g., Bayut/Propertyfinder), and do not mention human agents. "
-            "Keep it factual and concise."
-        )
-
-        perplexity_result = ask_perplexity(query)
-        if "answer" in perplexity_result:
-            assistant_reply = perplexity_result["answer"]
+        query += ". Provide direct links if possible (Bayut/Propertyfinder), no human agents. Be factual and concise."
+        
+        p_result = ask_perplexity(query)
+        if "answer" in p_result:
+            assistant_reply = p_result["answer"]
         else:
-            assistant_reply = "I couldn't find specific listings at this time. Consider adjusting your criteria."
+            assistant_reply = "I couldn't find specific listings at this time. Perhaps broaden your search criteria."
 
     elif intent == "market_trend" and location:
-        # Market Trend:
-        trend_reply = f"Let’s consider the current market trends in {location}."
+        trend_reply = f"Considering current market trends in {location}:"
         commentary_query = (
             f"Provide a brief commentary on recent real estate market trends in {location}, "
-            "including demand shifts, project launches, or pricing changes. No human agents."
+            "including demand, project launches, and pricing changes. No human agents."
         )
-        perplexity_result = ask_perplexity(commentary_query)
-        if "answer" in perplexity_result:
-            trend_reply += " " + perplexity_result["answer"]
+        p_result = ask_perplexity(commentary_query)
+        if "answer" in p_result:
+            trend_reply += " " + p_result["answer"]
         else:
             trend_reply += " I'm unable to find additional commentary right now."
         assistant_reply = trend_reply
 
     elif intent == "schedule_viewing":
-        # Scheduling a viewing:
         assistant_reply = (
-            "I can schedule the viewing for you myself. Could you provide a preferred date, time, or contact details? "
-            "I'll manage all arrangements directly."
+            "I'd be happy to arrange a viewing for you. Could you provide a preferred date, time, "
+            "or your contact details? I'll handle all arrangements directly as your AI agent."
         )
-
     else:
-        # Fallback: Use GPT directly if no specialized intent is found
+        # Fallback: Use OpenAI directly
         response = openai.ChatCompletion.create(
-            model="gpt-4o",
+            model="gpt-4",  # Use a GPT-4 model if available
             messages=conversation_history,
             temperature=0.7,
             max_tokens=700
         )
         assistant_reply = response.choices[0].message.content
 
+    # Append assistant reply to history
     conversation_history.append({"role": "assistant", "content": assistant_reply})
-    return {"reply": assistant_reply}
+
+    return assistant_reply
+
+
+@app.post("/chat")
+def chat_with_oliv(user_msg: UserMessage):
+    user_input = user_msg.message.strip()
+    reply = handle_user_query(user_input)
+    # Here you can also log interactions to a DB/file for your dashboard
+    return {"reply": reply}

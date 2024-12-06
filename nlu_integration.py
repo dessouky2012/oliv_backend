@@ -1,8 +1,7 @@
-# nlu_integration.py
 import os
 import openai
+import json
 
-# Read the OpenAI API key from an environment variable instead of hardcoding it
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
 def interpret_user_query(user_query: str) -> dict:
@@ -23,16 +22,15 @@ def interpret_user_query(user_query: str) -> dict:
     """
 
     response = openai.ChatCompletion.create(
-        model="gpt-4o",  # Keeping gpt-4o as requested
+        model="gpt-4",
         messages=[
-            {"role": "system", "content": "You only extract structured data in JSON format."},
+            {"role": "system", "content": "Return only JSON."},
             {"role": "user", "content": prompt}
         ],
         temperature=0.0
     )
 
     content = response.choices[0].message.content.strip()
-    import json
     try:
         data = json.loads(content)
     except:
@@ -44,5 +42,4 @@ def interpret_user_query(user_query: str) -> dict:
             "budget": None,
             "timeframe": None
         }
-
     return data
