@@ -1,7 +1,7 @@
 import os
 import openai
 import pandas as pd
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import logging
@@ -10,7 +10,6 @@ from typing import Optional
 from nlu_integration import interpret_user_query
 from predict import predict_price
 from perplexity_search import find_listings
-from db import log_interaction, get_interactions
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -57,7 +56,7 @@ class UserMessage(BaseModel):
 
 app = FastAPI(
     title="Oliv - Dubai Real Estate Assistant",
-    description="Oliv helps users find properties, check prices, trends and schedule viewings in Dubai.",
+    description="Oliv helps users find properties, check prices, trends, and schedule viewings in Dubai.",
     version="1.0.0"
 )
 
@@ -112,7 +111,7 @@ def call_openai_api(messages, temperature=0.7, max_tokens=700):
         return "I’m sorry, but I’m not able to assist at the moment due to missing configuration."
     try:
         response = openai.ChatCompletion.create(
-            model="gpt-4o",
+            model="gpt-4",
             messages=messages,
             temperature=temperature,
             max_tokens=max_tokens
@@ -283,18 +282,4 @@ def read_root():
 def chat_with_oliv(user_msg: UserMessage):
     user_input = user_msg.message.strip()
     reply = handle_user_query(user_input)
-    # Log interaction
-    log_interaction(user_input, reply)
     return {"reply": reply}
-
-@app.get("/admin/interactions")
-def get_recent_interactions(limit: int = 10):
-    """Endpoint to retrieve recent interactions for dashboard use."""
-    interactions = get_interactions(limit=limit)
-    return {"interactions": interactions}
-
-@app.get("/voice")
-def voice_capabilities():
-    """Placeholder endpoint for voice capabilities integration (TTS / STT)."""
-    # Here you could integrate a text-to-speech API or speech-to-text functionalities
-    return {"message": "Voice endpoint placeholder. Integrate your TTS/STT here."}
