@@ -37,7 +37,7 @@ def interpret_user_query(user_query: str) -> dict:
 
     try:
         response = openai.ChatCompletion.create(
-            model="gpt-4o",
+            model="gpt-4",
             messages=[
                 {"role": "system", "content": "Return only JSON."},
                 {"role": "user", "content": prompt}
